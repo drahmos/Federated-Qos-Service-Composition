@@ -20,14 +20,26 @@ class FederatedQoSServer:
         self.training_history = []
         
     def initialize_global_model(self, input_dim: int = 5, output_dim: int = 1):
-        """Initialize global model"""
+        """Initialize global model using proper initialization schemes"""
+        
+        # He initialization for ReLU activation (hidden layer)
+        # Variance = 2/n_in for ReLU networks
+        he_std_w1 = np.sqrt(2.0 / input_dim)
+        
+        # Xavier initialization for Sigmoid activation (output layer)  
+        # Variance = 1/n_in for sigmoid networks
+        xavier_std_w2 = np.sqrt(1.0 / 10)
+        
         self.global_model = {
-            'W1': np.random.randn(input_dim, 10) * 0.01,
+            'W1': np.random.randn(input_dim, 10) * he_std_w1,
             'b1': np.zeros((1, 10)),
-            'W2': np.random.randn(10, output_dim) * 0.01,
+            'W2': np.random.randn(10, output_dim) * xavier_std_w2,
             'b2': np.zeros((1, output_dim))
         }
-        print(f"Global model initialized with input_dim={input_dim}, output_dim={output_dim}")
+        
+        print(f"Global model initialized with He/Xavier initialization")
+        print(f"  - Input dim: {input_dim}, Hidden: 10, Output dim: {output_dim}")
+        print(f"  - W1 std: {he_std_w1:.4f}, W2 std: {xavier_std_w2:.4f}")
         
     def get_global_model(self) -> Dict:
         """Return current global model"""
