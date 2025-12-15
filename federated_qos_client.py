@@ -49,14 +49,25 @@ class FederatedQoSClient:
         self.service_history: Dict[str, List[QoSMetrics]] = {}
         
     def initialize_model(self, input_dim: int = 5, output_dim: int = 1):
-        """Initialize local model weights"""
+        """Initialize local model weights using proper initialization schemes"""
         # Simple neural network: input -> hidden -> output
+        
+        # He initialization for ReLU activation (hidden layer)
+        # Variance = 2/n_in for ReLU networks
+        he_std_w1 = np.sqrt(2.0 / input_dim)
+        
+        # Xavier initialization for Sigmoid activation (output layer)  
+        # Variance = 1/n_in for sigmoid networks
+        xavier_std_w2 = np.sqrt(1.0 / 10)
+        
         self.model_weights = {
-            'W1': np.random.randn(input_dim, 10) * 0.01,
+            'W1': np.random.randn(input_dim, 10) * he_std_w1,
             'b1': np.zeros((1, 10)),
-            'W2': np.random.randn(10, output_dim) * 0.01,
+            'W2': np.random.randn(10, output_dim) * xavier_std_w2,
             'b2': np.zeros((1, output_dim))
         }
+        
+        print(f"Client {self.client_id} model initialized with He/Xavier initialization")
         
     def add_service(self, service: WebService):
         """Add a service to local repository"""
