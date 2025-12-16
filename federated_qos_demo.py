@@ -4,12 +4,17 @@ Simulates multiple clients training collaboratively with a central server
 """
 
 import numpy as np
+import logging
 from federated_qos_client import (
     FederatedQoSClient, WebService, QoSMetrics, ServiceComposer
 )
 from federated_qos_server import (
     FederatedQoSServer, FederatedTrainingCoordinator
 )
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 
 def generate_synthetic_services(num_services: int, service_types: list) -> list:
@@ -53,50 +58,50 @@ def distribute_services_to_clients(services: list, num_clients: int) -> dict:
 def demonstrate_federated_learning():
     """Main demonstration of federated QoS learning"""
     
-    print("="*80)
-    print("FEDERATED LEARNING FOR QoS-AWARE WEB SERVICE COMPOSITION")
-    print("="*80)
-    
+    logger.info("="*80)
+    logger.info("FEDERATED LEARNING FOR QoS-AWARE WEB SERVICE COMPOSITION")
+    logger.info("="*80)
+
     # Configuration
     NUM_CLIENTS = 5
     NUM_SERVICES = 100
     SERVICE_TYPES = ["authentication", "payment", "database", "notification", "analytics"]
     NUM_ROUNDS = 15
     LOCAL_EPOCHS = 8
-    
-    print(f"\nConfiguration:")
-    print(f"  Number of Clients: {NUM_CLIENTS}")
-    print(f"  Total Services: {NUM_SERVICES}")
-    print(f"  Service Types: {SERVICE_TYPES}")
-    print(f"  Training Rounds: {NUM_ROUNDS}")
-    print(f"  Local Epochs per Round: {LOCAL_EPOCHS}")
+
+    logger.info(f"\nConfiguration:")
+    logger.info(f"  Number of Clients: {NUM_CLIENTS}")
+    logger.info(f"  Total Services: {NUM_SERVICES}")
+    logger.info(f"  Service Types: {SERVICE_TYPES}")
+    logger.info(f"  Training Rounds: {NUM_ROUNDS}")
+    logger.info(f"  Local Epochs per Round: {LOCAL_EPOCHS}")
     
     # Generate synthetic services
-    print(f"\n{'-'*80}")
-    print("Step 1: Generating Synthetic Services")
-    print(f"{'-'*80}")
+    logger.info(f"\n{'-'*80}")
+    logger.info("Step 1: Generating Synthetic Services")
+    logger.info(f"{'-'*80}")
     all_services = generate_synthetic_services(NUM_SERVICES, SERVICE_TYPES)
-    print(f"Generated {len(all_services)} services")
+    logger.info(f"Generated {len(all_services)} services")
     
     # Distribute services to clients
-    print(f"\n{'-'*80}")
-    print("Step 2: Distributing Services to Clients")
-    print(f"{'-'*80}")
+    logger.info(f"\n{'-'*80}")
+    logger.info("Step 2: Distributing Services to Clients")
+    logger.info(f"{'-'*80}")
     client_service_map = distribute_services_to_clients(all_services, NUM_CLIENTS)
     for client_id, services in client_service_map.items():
-        print(f"  {client_id}: {len(services)} services")
+        logger.info(f"  {client_id}: {len(services)} services")
     
     # Initialize server
-    print(f"\n{'-'*80}")
-    print("Step 3: Initializing Federated Server")
-    print(f"{'-'*80}")
+    logger.info(f"\n{'-'*80}")
+    logger.info("Step 3: Initializing Federated Server")
+    logger.info(f"{'-'*80}")
     server = FederatedQoSServer(num_clients=NUM_CLIENTS)
     server.initialize_global_model(input_dim=5, output_dim=1)
     
     # Initialize clients
-    print(f"\n{'-'*80}")
-    print("Step 4: Initializing Clients")
-    print(f"{'-'*80}")
+    logger.info(f"\n{'-'*80}")
+    logger.info("Step 4: Initializing Clients")
+    logger.info(f"{'-'*80}")
     clients = []
     for i in range(NUM_CLIENTS):
         client_id = f"client_{i}"
@@ -108,12 +113,12 @@ def demonstrate_federated_learning():
             client.add_service(service)
         
         clients.append(client)
-        print(f"  Initialized {client_id} with {len(client.local_services)} services")
+        logger.info(f"  Initialized {client_id} with {len(client.local_services)} services")
     
     # Run federated training
-    print(f"\n{'-'*80}")
-    print("Step 5: Running Federated Training")
-    print(f"{'-'*80}")
+    logger.info(f"\n{'-'*80}")
+    logger.info("Step 5: Running Federated Training")
+    logger.info(f"{'-'*80}")
     coordinator = FederatedTrainingCoordinator(server, clients)
     
     # Train with standard FedAvg
@@ -127,9 +132,9 @@ def demonstrate_federated_learning():
     server.save_model('qos_federated_model.json')
     
     # Demonstrate service composition
-    print(f"\n{'-'*80}")
-    print("Step 6: Service Composition with Trained Model")
-    print(f"{'-'*80}")
+    logger.info(f"\n{'-'*80}")
+    logger.info("Step 6: Service Composition with Trained Model")
+    logger.info(f"{'-'*80}")
     
     # Update all clients with final global model
     for client in clients:
@@ -153,38 +158,38 @@ def demonstrate_federated_learning():
         'max_cost': 5.0
     }
     
-    print(f"\nWorkflow: {' -> '.join(workflow)}")
-    print(f"Constraints: {constraints}")
+    logger.info(f"\nWorkflow: {' -> '.join(workflow)}")
+    logger.info(f"Constraints: {constraints}")
     
     # Compose services
     try:
         composition = composer.compose_services(workflow, available_services, constraints)
         
-        print(f"\nOptimal Service Composition:")
+        logger.info(f"\nOptimal Service Composition:")
         for i, service in enumerate(composition, 1):
             score = demo_client.predict_qos_score(service)
-            print(f"  {i}. {service.service_id}")
-            print(f"     Type: {service.service_type}")
-            print(f"     QoS Score: {score:.4f}")
-            print(f"     Response Time: {service.qos.response_time:.2f} ms")
-            print(f"     Availability: {service.qos.availability:.2%}")
-            print(f"     Cost: ${service.qos.cost:.2f}")
+            logger.info(f"  {i}. {service.service_id}")
+            logger.info(f"     Type: {service.service_type}")
+            logger.info(f"     QoS Score: {score:.4f}")
+            logger.info(f"     Response Time: {service.qos.response_time:.2f} ms")
+            logger.info(f"     Availability: {service.qos.availability:.2%}")
+            logger.info(f"     Cost: ${service.qos.cost:.2f}")
         
         # Evaluate overall composition
         metrics = composer.evaluate_composition(composition)
-        print(f"\nComposition Quality Metrics:")
-        print(f"  Total Response Time: {metrics['total_response_time']:.2f} ms")
-        print(f"  Average Availability: {metrics['avg_availability']:.2%}")
-        print(f"  Average Reliability: {metrics['avg_reliability']:.2%}")
-        print(f"  Total Cost: ${metrics['total_cost']:.2f}")
+        logger.info(f"\nComposition Quality Metrics:")
+        logger.info(f"  Total Response Time: {metrics['total_response_time']:.2f} ms")
+        logger.info(f"  Average Availability: {metrics['avg_availability']:.2%}")
+        logger.info(f"  Average Reliability: {metrics['avg_reliability']:.2%}")
+        logger.info(f"  Total Cost: ${metrics['total_cost']:.2f}")
         
     except Exception as e:
-        print(f"Error in composition: {e}")
+        logger.info(f"Error in composition: {e}")
     
     # Compare with different aggregation methods
-    print(f"\n{'-'*80}")
-    print("Step 7: Comparing Aggregation Methods")
-    print(f"{'-'*80}")
+    logger.info(f"\n{'-'*80}")
+    logger.info("Step 7: Comparing Aggregation Methods")
+    logger.info(f"{'-'*80}")
     
     # Reset and try adaptive aggregation
     server2 = FederatedQoSServer(num_clients=NUM_CLIENTS)
@@ -200,7 +205,7 @@ def demonstrate_federated_learning():
         clients2.append(client)
     
     coordinator2 = FederatedTrainingCoordinator(server2, clients2)
-    print("\nTraining with Adaptive FedAvg:")
+    logger.info("\nTraining with Adaptive FedAvg:")
     coordinator2.run_federated_training(
         num_rounds=10,
         local_epochs=LOCAL_EPOCHS,
@@ -221,23 +226,23 @@ def demonstrate_federated_learning():
         clients3.append(client)
     
     coordinator3 = FederatedTrainingCoordinator(server3, clients3)
-    print("\nTraining with Secure Aggregation (Differential Privacy):")
+    logger.info("\nTraining with Secure Aggregation (Differential Privacy):")
     coordinator3.run_federated_training(
         num_rounds=10,
         local_epochs=LOCAL_EPOCHS,
         aggregation_method='secure'
     )
     
-    print(f"\n{'='*80}")
-    print("DEMONSTRATION COMPLETED")
-    print(f"{'='*80}")
-    print("\nKey Features Demonstrated:")
-    print("  ✓ Federated learning across multiple clients")
-    print("  ✓ Privacy-preserving model aggregation")
-    print("  ✓ QoS-aware service composition")
-    print("  ✓ Multiple aggregation strategies (FedAvg, Adaptive, Secure)")
-    print("  ✓ Constraint-based service selection")
-    print("  ✓ Model persistence and loading")
+    logger.info(f"\n{'='*80}")
+    logger.info("DEMONSTRATION COMPLETED")
+    logger.info(f"{'='*80}")
+    logger.info("\nKey Features Demonstrated:")
+    logger.info("  ✓ Federated learning across multiple clients")
+    logger.info("  ✓ Privacy-preserving model aggregation")
+    logger.info("  ✓ QoS-aware service composition")
+    logger.info("  ✓ Multiple aggregation strategies (FedAvg, Adaptive, Secure)")
+    logger.info("  ✓ Constraint-based service selection")
+    logger.info("  ✓ Model persistence and loading")
 
 
 if __name__ == "__main__":
