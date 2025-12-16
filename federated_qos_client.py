@@ -5,14 +5,31 @@ Each client trains locally on service performance data and shares model updates
 
 import numpy as np
 import json
-from typing import List, Dict, Tuple
-import time
+import logging
+import copy
+from typing import List, Dict, Tuple, Optional
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 
 class QoSMetrics:
     """QoS metrics for web services"""
-    def __init__(self, response_time: float, throughput: float, 
+    def __init__(self, response_time: float, throughput: float,
                  availability: float, reliability: float, cost: float):
+        # Input validation
+        if response_time < 0:
+            raise ValueError(f"response_time must be non-negative, got {response_time}")
+        if throughput < 0:
+            raise ValueError(f"throughput must be non-negative, got {throughput}")
+        if not 0 <= availability <= 1:
+            raise ValueError(f"availability must be in [0, 1], got {availability}")
+        if not 0 <= reliability <= 1:
+            raise ValueError(f"reliability must be in [0, 1], got {reliability}")
+        if cost < 0:
+            raise ValueError(f"cost must be non-negative, got {cost}")
+
         self.response_time = response_time  # milliseconds
         self.throughput = throughput        # requests/second
         self.availability = availability    # percentage (0-1)
@@ -40,36 +57,52 @@ class WebService:
 
 class FederatedQoSClient:
     """Federated learning client for QoS prediction"""
-    
-    def __init__(self, client_id: str, learning_rate: float = 0.01):
+
+    def __init__(self, client_id: str, learning_rate: float = 0.01, gradient_clip_value: float = 5.0):
+        # Input validation
+        if learning_rate <= 0:
+            raise ValueError(f"learning_rate must be positive, got {learning_rate}")
+        if gradient_clip_value <= 0:
+            raise ValueError(f"gradient_clip_value must be positive, got {gradient_clip_value}")
+
         self.client_id = client_id
         self.learning_rate = learning_rate
+        self.gradient_clip_value = gradient_clip_value
         self.model_weights = None
         self.local_services: List[WebService] = []
         self.service_history: Dict[str, List[QoSMetrics]] = {}
+
+        # Store normalization parameters for consistent feature scaling
+        self.feature_mean: Optional[np.ndarray] = None
+        self.feature_std: Optional[np.ndarray] = None
+        self.label_min: Optional[float] = None
+        self.label_max: Optional[float] = None
         
-    def initialize_model(self, input_dim: int = 5, output_dim: int = 1):
+    def initialize_model(self, input_dim: int = 5, output_dim: int = 1) -> None:
         """Initialize local model weights using proper initialization schemes"""
+        if input_dim <= 0 or output_dim <= 0:
+            raise ValueError(f"Dimensions must be positive: input_dim={input_dim}, output_dim={output_dim}")
+
         # Simple neural network: input -> hidden -> output
-        
+
         # He initialization for ReLU activation (hidden layer)
         # Variance = 2/n_in for ReLU networks
         he_std_w1 = np.sqrt(2.0 / input_dim)
-        
-        # Xavier initialization for Sigmoid activation (output layer)  
+
+        # Xavier initialization for Sigmoid activation (output layer)
         # Variance = 1/n_in for sigmoid networks
         xavier_std_w2 = np.sqrt(1.0 / 10)
-        
+
         self.model_weights = {
             'W1': np.random.randn(input_dim, 10) * he_std_w1,
             'b1': np.zeros((1, 10)),
             'W2': np.random.randn(10, output_dim) * xavier_std_w2,
             'b2': np.zeros((1, output_dim))
         }
+
+        logger.info(f"Client {self.client_id} model initialized with He/Xavier initialization")
         
-        print(f"Client {self.client_id} model initialized with He/Xavier initialization")
-        
-    def add_service(self, service: WebService):
+    def add_service(self, service: WebService) -> None:
         """Add a service to local repository"""
         self.local_services.append(service)
         if service.service_id not in self.service_history:
@@ -95,70 +128,100 @@ class FederatedQoSClient:
         return A2, cache
     
     def backward_pass(self, X: np.ndarray, y: np.ndarray, cache: Dict) -> Dict:
-        """Backward propagation"""
+        """Backward propagation with gradient clipping"""
         m = X.shape[0]
         gradients = {}
-        
+
         # Output layer
         dZ2 = cache['A2'] - y
         gradients['dW2'] = np.dot(cache['A1'].T, dZ2) / m
         gradients['db2'] = np.sum(dZ2, axis=0, keepdims=True) / m
-        
+
         # Hidden layer
         dA1 = np.dot(dZ2, self.model_weights['W2'].T)
         dZ1 = dA1 * (cache['Z1'] > 0)  # ReLU derivative
         gradients['dW1'] = np.dot(X.T, dZ1) / m
         gradients['db1'] = np.sum(dZ1, axis=0, keepdims=True) / m
-        
+
+        # Gradient clipping to prevent exploding gradients
+        for key in gradients:
+            gradients[key] = np.clip(gradients[key], -self.gradient_clip_value, self.gradient_clip_value)
+
         return gradients
     
     def train_local(self, epochs: int = 10) -> Dict:
         """Train model on local data"""
+        if epochs <= 0:
+            raise ValueError(f"epochs must be positive, got {epochs}")
+
         if not self.local_services:
+            logger.warning(f"Client {self.client_id} has no services to train on")
             return self.model_weights
-        
+
         # Prepare training data
         X = np.array([s.to_vector() for s in self.local_services])
-        # Normalize features
-        X = (X - X.mean(axis=0)) / (X.std(axis=0) + 1e-8)
-        
+
+        # Normalize features and store parameters for consistent prediction
+        if self.feature_mean is None or self.feature_std is None:
+            self.feature_mean = X.mean(axis=0)
+            self.feature_std = X.std(axis=0) + 1e-8  # Add epsilon to prevent division by zero
+        X = (X - self.feature_mean) / self.feature_std
+
         # Create labels (quality score: composite of QoS metrics)
         y = np.array([[
-            s.qos.availability * s.qos.reliability / 
+            s.qos.availability * s.qos.reliability /
             (s.qos.response_time * s.qos.cost + 1e-8)
         ] for s in self.local_services])
-        y = (y - y.min()) / (y.max() - y.min() + 1e-8)  # Normalize to [0,1]
-        
+
+        # Normalize labels to [0,1] and handle edge case of identical labels
+        if self.label_min is None or self.label_max is None:
+            self.label_min = y.min()
+            self.label_max = y.max()
+
+        # Handle edge case: all labels are identical
+        if self.label_max - self.label_min < 1e-8:
+            logger.warning(f"Client {self.client_id}: All labels are identical, setting to 0.5")
+            y = np.full_like(y, 0.5)
+        else:
+            y = (y - self.label_min) / (self.label_max - self.label_min)
+
         # Training loop
         for epoch in range(epochs):
             # Forward pass
             predictions, cache = self.forward_pass(X)
-            
+
             # Compute loss (MSE)
             loss = np.mean((predictions - y) ** 2)
-            
+
             # Backward pass
             gradients = self.backward_pass(X, y, cache)
-            
+
             # Update weights
             self.model_weights['W1'] -= self.learning_rate * gradients['dW1']
             self.model_weights['b1'] -= self.learning_rate * gradients['db1']
             self.model_weights['W2'] -= self.learning_rate * gradients['dW2']
             self.model_weights['b2'] -= self.learning_rate * gradients['db2']
-            
+
             if epoch % 5 == 0:
-                print(f"Client {self.client_id} - Epoch {epoch}, Loss: {loss:.4f}")
-        
+                logger.info(f"Client {self.client_id} - Epoch {epoch}, Loss: {loss:.4f}")
+
         return self.model_weights
     
-    def update_model(self, global_weights: Dict):
+    def update_model(self, global_weights: Dict) -> None:
         """Update local model with global weights"""
-        self.model_weights = global_weights.copy()
+        # Use deep copy to prevent shared state issues
+        self.model_weights = copy.deepcopy(global_weights)
         
     def predict_qos_score(self, service: WebService) -> float:
-        """Predict QoS score for a service"""
+        """Predict QoS score for a service using consistent normalization"""
         X = service.to_vector().reshape(1, -1)
-        X = (X - X.mean()) / (X.std() + 1e-8)
+
+        # Use stored normalization parameters for consistency
+        if self.feature_mean is not None and self.feature_std is not None:
+            X = (X - self.feature_mean) / self.feature_std
+        else:
+            logger.warning(f"Client {self.client_id}: No normalization parameters available, using raw features")
+
         score, _ = self.forward_pass(X)
         return float(score[0, 0])
     
@@ -177,7 +240,7 @@ class ServiceComposer:
     def __init__(self, client: FederatedQoSClient):
         self.client = client
         
-    def compose_services(self, service_types: List[str], 
+    def compose_services(self, service_types: List[str],
                          available_services: Dict[str, List[WebService]],
                          qos_constraints: Dict[str, float]) -> List[WebService]:
         """
@@ -187,28 +250,34 @@ class ServiceComposer:
             available_services: Dict mapping service type to available services
             qos_constraints: QoS requirements (max_response_time, min_availability, etc.)
         """
+        if not service_types:
+            raise ValueError("service_types cannot be empty")
+
         composition = []
-        
+
         for service_type in service_types:
             if service_type not in available_services:
                 raise ValueError(f"No services available for type: {service_type}")
-            
+
             # Filter services by constraints
             candidates = available_services[service_type]
+            if not candidates:
+                raise ValueError(f"No candidate services for type: {service_type}")
+
             valid_candidates = [
                 s for s in candidates
                 if self._meets_constraints(s, qos_constraints)
             ]
-            
+
             if not valid_candidates:
-                print(f"Warning: No services meet constraints for {service_type}")
+                logger.warning(f"No services meet constraints for {service_type}, using all candidates")
                 valid_candidates = candidates
-            
+
             # Select best service based on predicted QoS score
-            best_service = max(valid_candidates, 
+            best_service = max(valid_candidates,
                              key=lambda s: self.client.predict_qos_score(s))
             composition.append(best_service)
-        
+
         return composition
     
     def _meets_constraints(self, service: WebService, 
@@ -246,7 +315,7 @@ class ServiceComposer:
 
 if __name__ == "__main__":
     # Example usage
-    print("=== Federated QoS Client Demo ===\n")
+    logger.info("=== Federated QoS Client Demo ===\n")
     
     # Create client
     client = FederatedQoSClient("client_1", learning_rate=0.01)
@@ -266,42 +335,42 @@ if __name__ == "__main__":
         client.add_service(service)
     
     # Train local model
-    print("Training local model...")
+    logger.info("Training local model...")
     client.train_local(epochs=20)
-    
+
     # Predict QoS scores
-    print("\nQoS Score Predictions:")
+    logger.info("\nQoS Score Predictions:")
     for service in client.local_services:
         score = client.predict_qos_score(service)
-        print(f"  {service.service_id} ({service.service_type}): {score:.4f}")
-    
+        logger.info(f"  {service.service_id} ({service.service_type}): {score:.4f}")
+
     # Service composition
-    print("\n=== Service Composition ===")
+    logger.info("\n=== Service Composition ===")
     composer = ServiceComposer(client)
-    
+
     available = {
         "authentication": [client.local_services[0], client.local_services[1]],
         "payment": [client.local_services[2], client.local_services[3]],
         "notification": [client.local_services[4]]
     }
-    
+
     constraints = {
         'max_response_time': 200,
         'min_availability': 0.95,
         'max_cost': 2.0
     }
-    
+
     composition = composer.compose_services(
         ["authentication", "payment", "notification"],
         available,
         constraints
     )
-    
-    print("\nSelected Composition:")
+
+    logger.info("\nSelected Composition:")
     for s in composition:
-        print(f"  {s.service_type}: {s.service_id}")
-    
+        logger.info(f"  {s.service_type}: {s.service_id}")
+
     metrics = composer.evaluate_composition(composition)
-    print("\nComposition Metrics:")
+    logger.info("\nComposition Metrics:")
     for key, value in metrics.items():
-        print(f"  {key}: {value:.2f}")
+        logger.info(f"  {key}: {value:.2f}")
