@@ -1,0 +1,8 @@
+{
+  "name": "Synthetic QoS Dataset",
+  "n_users": 200,
+  "n_services": 300,
+  "n_workflows": 100,
+  "sparsity": 0.9,
+  "description": "Synthetic QoS data for service composition experiments"
+}
