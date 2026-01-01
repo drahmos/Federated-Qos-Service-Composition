@@ -425,21 +425,17 @@ class TransferLearningComposer(BaselineComposer):
         requirements: np.ndarray,
         num_services: int
     ) -> torch.Tensor:
-        """Create state representation"""
+        """Create state representation (12-dim to match MAML)"""
         state_features = []
-        
-        # Position in workflow
-        pos_feature = np.zeros(10)
-        pos_feature[min(node["position"], 9)] = 1.0
+
+        pos_feature = np.zeros(1)
+        pos_feature[0] = node["position"] / 10.0
         state_features.append(pos_feature)
-        
-        # Requirements
+
         state_features.append(requirements / 1000.0)
-        
-        # Number of available services
+
         state_features.append(np.array([num_services / 100.0]))
-        
-        # Concatenate
+
         state = np.concatenate(state_features)
         return torch.FloatTensor(state)
     
@@ -563,21 +559,17 @@ class MultiTaskLearningComposer(BaselineComposer):
         requirements: np.ndarray,
         num_services: int
     ) -> torch.Tensor:
-        """Create state representation"""
+        """Create state representation (12-dim to match MAML)"""
         state_features = []
-        
-        # Position in workflow
-        pos_feature = np.zeros(10)
-        pos_feature[min(node["position"], 9)] = 1.0
+
+        pos_feature = np.zeros(1)
+        pos_feature[0] = node["position"] / 10.0
         state_features.append(pos_feature)
-        
-        # Requirements
+
         state_features.append(requirements / 1000.0)
-        
-        # Number of available services
+
         state_features.append(np.array([num_services / 100.0]))
-        
-        # Concatenate
+
         state = np.concatenate(state_features)
         return torch.FloatTensor(state)
     

@@ -99,7 +99,10 @@ class MAMLComposer:
         # Training history
         self.meta_losses: List[float] = []
         self.inner_losses: List[List[float]] = []
-    
+
+    def get_name(self) -> str:
+        return "MAML (Meta-Learning)"
+
     def inner_loop_adapt(
         self,
         support_states: List[torch.Tensor],
@@ -373,7 +376,7 @@ class MAMLComposer:
         }
         torch.save(checkpoint, filepath)
         print(f"Checkpoint saved to {filepath}")
-    
+
     def load_checkpoint(self, filepath: str):
         """Load model checkpoint"""
         checkpoint = torch.load(filepath)
@@ -381,6 +384,78 @@ class MAMLComposer:
         self.meta_optimizer.load_state_dict(checkpoint['meta_optimizer_state_dict'])
         self.meta_losses = checkpoint['meta_losses']
         print(f"Checkpoint loaded from {filepath}")
+
+    def compose(
+        self,
+        workflow,
+        available_services: List,
+        requirements: np.ndarray
+    ) -> List[int]:
+        """Select services using adapted meta-policy"""
+        selected = []
+
+        for node in workflow.nodes:
+            state = self._create_state(node, requirements, len(available_services))
+
+            with torch.no_grad():
+                logits = self.meta_policy(state)
+                probs = torch.softmax(logits, dim=-1)
+                action = int(torch.argmax(probs).item())
+
+            action = min(action, len(available_services) - 1)
+            selected.append(available_services[action].id)
+
+        return selected
+
+    def _create_state(
+        self,
+        node,
+        requirements: np.ndarray,
+        num_services: int
+    ) -> torch.Tensor:
+        """Create state representation for a single node (7-dim: 1 pos + 5 req + 1 num_services)"""
+        state_features = []
+
+        pos_feature = np.array([min(node["position"], 9) / 10.0])
+        state_features.append(pos_feature)
+
+        state_features.append(requirements / 1000.0)
+
+        state_features.append(np.array([num_services / 100.0]))
+
+        state = np.concatenate(state_features)
+        return torch.FloatTensor(state)
+
+    def adapt_and_compose(
+        self,
+        workflow,
+        available_services: List,
+        requirements: np.ndarray,
+        support_data: List[Tuple[torch.Tensor, int, float]]
+    ) -> List[int]:
+        """Adapt policy to domain then compose"""
+        if len(support_data) == 0:
+            return self.compose(workflow, available_services, requirements)
+
+        states = [s[0] for s in support_data]
+        actions = [torch.tensor(s[1]) for s in support_data]
+        rewards = [s[2] for s in support_data]
+
+        adapted_policy = self.adapt_to_domain(states, actions, rewards)
+
+        selected = []
+        for node in workflow.nodes:
+            state = self._create_state(node, requirements, len(available_services))
+
+            with torch.no_grad():
+                logits = adapted_policy(state)
+                probs = torch.softmax(logits, dim=-1)
+                action = int(torch.argmax(probs).item())
+
+            action = min(action, len(available_services) - 1)
+            selected.append(available_services[action].id)
+
+        return selected
 
 
 class ReptileComposer:
@@ -407,7 +482,12 @@ class ReptileComposer:
             self.meta_policy.parameters(),
             lr=meta_lr
         )
+        
+        # Meta-training history
         self.meta_losses: List[float] = []
+
+    def get_name(self) -> str:
+        return "MAML (Meta-Learning)"
     
     def adapt_step(self, policy: nn.Module, loss: torch.Tensor):
         """Single adaptation step"""

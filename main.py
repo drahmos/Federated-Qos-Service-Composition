@@ -119,21 +119,16 @@ class Evaluator:
         qos: np.ndarray,
         num_services: int
     ) -> torch.Tensor:
-        """Create state tensor"""
+        """Create state tensor (7-dim: 1 pos + 5 req + 1 num_services)"""
         state_features = []
-        
-        # Normalized QoS (5 features)
-        state_features.append(qos / 1000.0)
-        
-        # Requirements (5 features)
+
+        pos_feature = np.array([0.5])  # Use fixed position for training
+        state_features.append(pos_feature)
+
         state_features.append(workflow.requirements / 1000.0)
-        
-        # Workflow size (1 feature)
-        state_features.append(np.array([len(workflow.nodes) / 10.0]))
-        
-        # Number of services (1 feature)
+
         state_features.append(np.array([num_services / 100.0]))
-        
+
         state = np.concatenate(state_features)
         return torch.FloatTensor(state)
     
@@ -251,7 +246,7 @@ class Evaluator:
             domains_data[domain] = self.prepare_training_data(domain, num_samples=200)
         
         # Initialize MAML
-        state_dim = 12  # State dimension (5 qos + 5 req + 1 size + 1 count)
+        state_dim = 7  # State dimension (1 pos + 5 req + 1 num_services)
         action_dim = 30  # Max services
         
         self.maml_composer = MAMLComposer(
@@ -278,11 +273,11 @@ class Evaluator:
         # Meta-train
         self.maml_composer.meta_train(
             maml_domains_data,
-            num_iterations=min(500, self.config.meta_learning.num_meta_iterations),
+            num_iterations=self.config.meta_learning.num_meta_iterations,
             batch_size=self.config.meta_learning.batch_size,
             support_size=self.config.meta_learning.support_set_size,
             query_size=self.config.meta_learning.query_set_size,
-            log_interval=50
+            log_interval=100
         )
         
         self.training_curves["Meta-Learning"] = self.maml_composer.meta_losses
@@ -310,7 +305,7 @@ class Evaluator:
         
         # Transfer Learning
         print("\nTraining Transfer Learning...")
-        state_dim = 12  # State dimension (5 qos + 5 req + 1 size + 1 count)
+        state_dim = 7  # State dimension (1 pos + 5 req + 1 num_services)
         action_dim = 30
         
         self.tl_composer = TransferLearningComposer(
@@ -474,8 +469,8 @@ def main():
     # Create configuration
     cfg = TrainingConfig()
     
-    # Update configuration for faster testing
-    cfg.meta_learning.num_meta_iterations = 200
+    # Update configuration for extended evaluation
+    cfg.meta_learning.num_meta_iterations = 2000
     cfg.train_domains = ["healthcare", "fintech", "ecommerce"]
     cfg.test_domains = ["education"]
     

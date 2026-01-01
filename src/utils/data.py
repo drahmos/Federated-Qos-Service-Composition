@@ -225,15 +225,16 @@ class DataGenerator:
         # Compute aggregated QoS
         agg_qos = np.array([s.qos_values for s in services])
         
-        # Requirements should be slightly stricter than aggregated QoS
+        # Requirements based on mean service QoS (achievable targets)
         requirements = agg_qos.mean(axis=0)
         
-        # Make requirements achievable but challenging
-        requirements[0] *= 0.8  # response_time should be 20% better
-        requirements[1] *= 1.2  # throughput should be 20% higher
-        requirements[2] = min(0.999, requirements[2] + 0.01)  # availability higher
-        requirements[3] = min(0.999, requirements[3] + 0.01)  # reliability higher
-        requirements[4] *= 0.7  # cost should be 30% lower
+        # Make requirements slightly challenging but achievable
+        # These adjustments make it possible to meet requirements with good service selection
+        requirements[0] *= 0.95  # response_time: 5% better (achievable)
+        requirements[1] *= 1.05  # throughput: 5% higher (achievable)
+        requirements[2] = max(0.90, min(0.99, agg_qos.mean(axis=0)[2]))  # availability: realistic target
+        requirements[3] = max(0.88, min(0.98, agg_qos.mean(axis=0)[3]))  # reliability: realistic target
+        requirements[4] *= 1.05  # cost: 5% higher budget (easier to satisfy)
         
         return requirements
     

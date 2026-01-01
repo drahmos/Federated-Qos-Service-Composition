@@ -1,0 +1,11 @@
+[core]
+	repositoryformatversion = 0
+	filemode = true
+	bare = true
+	ignorecase = true
+	precomposeunicode = true
+[credential]
+	helper = store
+[remote "origin"]
+	url = git@github.com:drahmos/meta-qos-composition.git
+	fetch = +refs/heads/*:refs/remotes/origin/*
