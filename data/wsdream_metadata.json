@@ -1,0 +1,8 @@
+{
+  "name": "Enhanced Synthetic QoS Dataset",
+  "n_users": 339,
+  "n_services": 500,
+  "n_workflows": 150,
+  "sparsity": 0.9,
+  "description": "Enhanced synthetic QoS data (WS-Dream-like: 339 users, 500 services, 150 workflows)"
+}
